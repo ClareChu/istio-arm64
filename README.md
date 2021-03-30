@@ -63,5 +63,101 @@ $     -e IN_BUILD_CONTAINER=1 \
 3. 在项目的根目录 编译
 
 ```bash
-IMG=clarechu/build-tools:release-1.7 make build
+LOCAL_ARCH=aarch64 IMG=clarechu/build-tools:release-1.7 make build
+```
+
+现在在项目根目录上会出现 out 目录 及下面所有的包
+
+```bash
+$ ls
+client       istio-cni         istio-iptables  mixc    operator         policybackend  server
+envoy        istio-cni-repair  istio_is_init   mixgen  pilot-agent      release
+install-cni  istioctl          logs            mixs    pilot-discovery  sdsclient
+```
+
+更改arch manifests/charts/gateways/istio-ingress/values.yaml
+
+```yaml
+  arch:
+    amd64: 2
+    s390x: 2
+    ppc64le: 2
+    # 加这一行代码
+    + arm64: 2
+```
+
+```bash
+$ HUB=docker.io/clarechu TAG=1.7 IMG=clarechu/build-tools:release-1.7  make gen-charts
+$ HUB=docker.io/clarechu TAG=1.7 IMG=clarechu/build-tools:release-1.7 make docker.operator
+```
+
+出现了几个问题 需要改以下代码 `Makefile.core.mk`
+
+```bash
+# 306 build-linux: depend
+# 307         STATIC=0 GOOS=linux GOARCH=$(GOARCH_LOCAL) LDFLAGS='-extldflags -static -s -w' common/scripts/gobuild.sh $(ISTIO_OUT)/ $(STANDARD_BINARIES)
+# 308         GOOS=linux GOARCH=$(GOARCH_LOCAL) LDFLAGS=$(RELEASE_LDFLAGS) common/scripts/gobuild.sh $(ISTIO_OUT_LINUX)/ -tags=agent $(AGENT_BINARIES)
+
+# istio 把这个地方写死了
+ GOARCH=amd64 -->  GOARCH=$(GOARCH_LOCAL)
+# 目录改调
+$(ISTIO_OUT_LINUX) --> $(ISTIO_OUT)
+
+export ISTIO_OUT_LINUX:=$(TARGET_OUT_LINUX)
+--->
+export ISTIO_OUT_LINUX:=$(TARGET_OUT)
+```
+
+tools/istio-docker.mk
+
+```bash
+docker.operator: $(ISTIO_OUT_LINUX)/operator --> docker.operator: $(ISTIO_OUT)/operator
+```
+
+### 编译 istiod
+
+```bash
+$  LOCAL_ARCH=aarch64 IMG=clarechu/build-tools:release-1.7 HUB=docker.io/clarechu TAG=1.7 make docker.pilot
+```
+
+### 编译 proxyv2
+
+```bash
+$  LOCAL_ARCH=aarch64 IMG=clarechu/build-tools:release-1.7 HUB=docker.io/clarechu TAG=1.7 make docker.proxyv2
+```
+
+出现了这个问题
+
+```bash
+
+standard_init_linux.go:211: exec user process caused "exec format error"
+The command '/bin/sh -c chown -R istio-proxy /var/lib/istio' returned a non-zero code: 1
+
+real	0m6.493s
+user	0m0.660s
+sys	0m1.529s
+tools/istio-docker.mk:98: recipe for target 'docker.proxyv2' failed
+
+```
+
+所以注释 掉
+
+```bash
+RUN chown -R istio-proxy /var/lib/istio
+COPY --from=default /usr/lib/x86_64-linux-gnu/xtables/ /usr/lib/x86_64-linux-gnu/xtables
+COPY --from=default /usr/lib/x86_64-linux-gnu/ /usr/lib/x86_64-linux-gnu
+```
+
+然后重新在arm的机器上面做镜像
+
+```dockerfile
+cat >> Dockerfile << EOF
+FROM clarechu/proxyv2:1.7
+
+RUN chown -R istio-proxy /var/lib/istio
+EOF
+
+docker build -t clarechu/proxyv2:1.7 .
+
+docker push clarechu/proxyv2:1.7
 ```
