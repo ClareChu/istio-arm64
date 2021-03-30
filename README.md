@@ -123,7 +123,7 @@ $  LOCAL_ARCH=aarch64 IMG=clarechu/build-tools:release-1.7 HUB=docker.io/clarech
 ### 编译 proxyv2
 
 ```bash
-$  LOCAL_ARCH=aarch64 IMG=clarechu/build-tools:release-1.7 HUB=docker.io/clarechu TAG=1.7 make docker.proxyv2
+$ LOCAL_ARCH=aarch64 IMG=clarechu/build-tools:release-1.7 HUB=docker.io/clarechu TAG=1.7 make docker.proxyv2
 ```
 
 出现了这个问题
